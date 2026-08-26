@@ -33,6 +33,38 @@ export default function SettingsScreen() {
         <Card style={styles.card}>
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
+              <Text style={styles.settingTitle}>Music</Text>
+              <Text style={styles.settingDesc}>Background music during your run</Text>
+            </View>
+            <Switch
+              value={settings.music}
+              onValueChange={(val) => updateSettings({ music: val })}
+              trackColor={{ false: colors.cardSecondary, true: colors.primary }}
+              thumbColor="#fff"
+              testID="settings-music"
+            />
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingTitle}>Sound Effects</Text>
+              <Text style={styles.settingDesc}>Feedback for wins, purchases, and more</Text>
+            </View>
+            <Switch
+              value={settings.sounds}
+              onValueChange={(val) => updateSettings({ sounds: val })}
+              trackColor={{ false: colors.cardSecondary, true: colors.primary }}
+              thumbColor="#fff"
+              testID="settings-sounds"
+            />
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
               <Text style={styles.settingTitle}>Haptics</Text>
               <Text style={styles.settingDesc}>Vibration feedback on actions</Text>
             </View>
@@ -41,6 +73,7 @@ export default function SettingsScreen() {
               onValueChange={(val) => updateSettings({ haptics: val })}
               trackColor={{ false: colors.cardSecondary, true: colors.primary }}
               thumbColor="#fff"
+              testID="settings-haptics"
             />
           </View>
 
@@ -56,6 +89,7 @@ export default function SettingsScreen() {
               onValueChange={(val) => updateSettings({ reducedMotion: val })}
               trackColor={{ false: colors.cardSecondary, true: colors.primary }}
               thumbColor="#fff"
+              testID="settings-reduced-motion"
             />
           </View>
         </Card>

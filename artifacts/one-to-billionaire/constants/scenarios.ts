@@ -1,4 +1,5 @@
 import { Business } from './businesses';
+import { MONEY_EVENT_SCENARIOS } from './events';
 
 export interface Outcome {
   weight: number;
@@ -457,7 +458,16 @@ const generateScenarios = (): Scenario[] => {
     { id: 'c2', text: 'Grind it out safely', cost: 0, outcomes: [{ weight: 1, text: 'Patience.', cashChange: 10000000, riskChange: -10 }] }
   ]);
 
-  return scenarios;
+  // Deliberate late-game liquidity decisions: neither choice is a disguised free win.
+  add(6, 'liquidity_crossroads', 'Aurum Buyout Offer', 'Aurum Capital offers cash for your fastest-growing division.', 'business', [
+    { id: 'sell', text: 'Sell for $35M now', cost: 0, outcomes: [{ weight: 1, text: 'You lock in a generational exit.', cashChange: 35_000_000, riskChange: -18 }] },
+    { id: 'hold', text: 'Hold for another year', cost: 0, outcomes: [{ weight: 55, text: 'Growth compounds beyond the offer.', cashChange: 62_000_000, riskChange: 18 }, { weight: 45, text: 'A competitor erodes the division.', cashChange: -24_000_000, riskChange: 28 }] },
+  ]);
+  add(7, 'sovereign_sale_offer', 'Sovereign Sale Offer', 'A global consortium offers to acquire your flagship platform.', 'business', [
+    { id: 'sell', text: 'Accept $420M cash', cost: 0, outcomes: [{ weight: 1, text: 'Wire confirmed. Liquidity secured.', cashChange: 420_000_000, riskChange: -25 }] },
+    { id: 'hold', text: 'Reject and scale worldwide', cost: 0, outcomes: [{ weight: 48, text: 'The platform becomes indispensable.', cashChange: 720_000_000, riskChange: 30 }, { weight: 52, text: 'Regulators halt the expansion.', cashChange: -280_000_000, riskChange: 42 }] },
+  ]);
+  return [...scenarios, ...MONEY_EVENT_SCENARIOS];
 };
 
 export const SCENARIOS = generateScenarios();

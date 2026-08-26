@@ -1,325 +1,105 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { KEYS } from '../lib/storage';
-import { BUSINESSES } from '../constants/businesses';
-import { Choice, Outcome } from '../constants/scenarios';
-import { ACHIEVEMENTS } from '../constants/achievements';
-import { clamp } from '../lib/utils';
 import { router } from 'expo-router';
+import { KEYS, migrateSave } from '../lib/storage';
+import type { Choice, Outcome } from '../constants/scenarios';
+import type { BonusResult, EngineGameState, GameStatus, TemporaryWorldEvent } from '../game-engine/types';
+import { applyBonus, applyWorldEvent, defaultEngineState, getNetWorth, getPassiveIncome, resolveChoice, upgradeHolding } from '../game-engine';
+import { applyAchievementRules } from '../game-engine/achievements';
 
-export interface GameState {
-  cash: number;
-  day: number;
-  risk: number;
-  businesses: string[];
-  debt: number;
-  runStats: {
-    peakNetWorth: number;
-    biggestWin: number;
-    biggestLoss: number;
-    businessesPurchased: number;
-    decisionsMade: number;
-  };
-  achievements: string[];
-}
-
+export interface GameState extends EngineGameState {}
 export interface GlobalStats {
-  gamesPlayed: number;
-  bankruptcies: number;
-  victories: number;
-  highestNetWorth: number;
-  totalDaysPlayed: number;
-  fastestBillion: number | null;
-  largestGain: number;
-  largestLoss: number;
-  businessesPurchased: number;
-  lifetimeEarnings: number;
-  decisionsMade: number;
+  gamesPlayed: number; bankruptcies: number; victories: number; highestNetWorth: number;
+  totalDaysPlayed: number; fastestBillion: number | null; largestGain: number; largestLoss: number;
+  businessesPurchased: number; lifetimeEarnings: number; decisionsMade: number;
 }
-
-export type GameStatus = 'ongoing' | 'bankrupt' | 'victory';
+const defaultGlobalStats: GlobalStats = { gamesPlayed: 0, bankruptcies: 0, victories: 0, highestNetWorth: 1, totalDaysPlayed: 0, fastestBillion: null, largestGain: 0, largestLoss: 0, businessesPurchased: 0, lifetimeEarnings: 0, decisionsMade: 0 };
+export type { GameStatus };
+export interface ChoiceResult { outcome: Outcome; status: GameStatus; actualChange: number; passiveIncome: number; riskPenalty: number; }
 
 interface GameContextType {
-  gameState: GameState | null;
-  globalStats: GlobalStats;
-  netWorth: number;
-  passiveIncome: number;
-  startGame: () => void;
-  makeChoice: (choice: Choice) => { outcome: Outcome, status: GameStatus, actualChange: number } | void;
-  useSecondChance: () => void;
-  endGame: (victory: boolean) => void;
-  resetProgress: () => void;
+  gameState: GameState | null; globalStats: GlobalStats; netWorth: number; passiveIncome: number;
+  startGame: () => void; makeChoice: (choice: Choice, actionId?: string) => ChoiceResult | void;
+  useSecondChance: () => void; endGame: (victory: boolean) => void; resetProgress: () => void;
+  upgradeBusiness: (id: string) => { upgraded: boolean; cost: number };
+  applyBonusResult: (result: BonusResult, actionId?: string) => boolean;
+  applySpecialResult: (result: BonusResult, actionId?: string) => boolean;
+  applyTemporaryWorldEvent: (event: TemporaryWorldEvent) => void;
+  dismissMilestone: () => void;
 }
-
-const defaultGameState: GameState = {
-  cash: 1,
-  day: 1,
-  risk: 0,
-  businesses: [],
-  debt: 0,
-  runStats: {
-    peakNetWorth: 1,
-    biggestWin: 0,
-    biggestLoss: 0,
-    businessesPurchased: 0,
-    decisionsMade: 0,
-  },
-  achievements: [],
-};
-
-const defaultGlobalStats: GlobalStats = {
-  gamesPlayed: 0,
-  bankruptcies: 0,
-  victories: 0,
-  highestNetWorth: 1,
-  totalDaysPlayed: 0,
-  fastestBillion: null,
-  largestGain: 0,
-  largestLoss: 0,
-  businessesPurchased: 0,
-  lifetimeEarnings: 0,
-  decisionsMade: 0,
-};
-
 const GameContext = createContext<GameContextType | null>(null);
 
 export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [globalStats, setGlobalStats] = useState<GlobalStats>(defaultGlobalStats);
   const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    const load = async () => {
-      const [stateRaw, statsRaw] = await Promise.all([
-        AsyncStorage.getItem(KEYS.GAME_STATE),
-        AsyncStorage.getItem(KEYS.GLOBAL_STATS),
-      ]);
-      
-      if (statsRaw) {
-        setGlobalStats({ ...defaultGlobalStats, ...JSON.parse(statsRaw) });
-      }
+  const busy = useRef(false);
+  const processedAction = useRef<string | undefined>(undefined);
+  const persistQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const persist = (state: GameState, stats: GlobalStats) => {
+    const stateSnapshot = JSON.stringify(state);
+    const statsSnapshot = JSON.stringify(stats);
+    persistQueue.current = persistQueue.current
+      .catch(() => undefined)
+      .then(() => Promise.all([
+        AsyncStorage.setItem(KEYS.GAME_STATE, stateSnapshot),
+        AsyncStorage.setItem(KEYS.GLOBAL_STATS, statsSnapshot),
+      ]));
+  };
+  useEffect(() => { void (async () => {
+    try {
+      const [stateRaw, statsRaw] = await Promise.all([AsyncStorage.getItem(KEYS.GAME_STATE), AsyncStorage.getItem(KEYS.GLOBAL_STATS)]);
+      if (statsRaw) setGlobalStats({ ...defaultGlobalStats, ...JSON.parse(statsRaw) });
       if (stateRaw) {
         const parsed = JSON.parse(stateRaw);
-        setGameState({
-          ...defaultGameState,
-          ...parsed,
-          runStats: { ...defaultGameState.runStats, ...(parsed.runStats || {}) }
-        });
+        setGameState({ ...defaultEngineState(), ...migrateSave(parsed), runStats: { ...defaultEngineState().runStats, ...(parsed.runStats || {}) } });
       }
-      setLoaded(true);
-    };
-    load();
-  }, []);
-
-  const saveState = async (state: GameState, stats: GlobalStats) => {
-    await Promise.all([
-      AsyncStorage.setItem(KEYS.GAME_STATE, JSON.stringify(state)),
-      AsyncStorage.setItem(KEYS.GLOBAL_STATS, JSON.stringify(stats)),
-    ]);
+    } catch {
+      setGameState(null);
+      setGlobalStats(defaultGlobalStats);
+    } finally { setLoaded(true); }
+  })(); }, []);
+  const commit = (state: GameState, stats = globalStats) => { setGameState(state); setGlobalStats(stats); persist(state, stats); };
+  const startGame = () => { processedAction.current = undefined; const state: GameState = { ...defaultEngineState(), achievements: gameState?.achievements || [] }; const stats = { ...globalStats, gamesPlayed: globalStats.gamesPlayed + 1 }; commit(state, stats); router.replace('/game'); };
+  const makeChoice = (choice: Choice, actionId?: string): ChoiceResult | void => {
+    const key = actionId || `${gameState?.day}:${choice.id}`;
+    if (!gameState || busy.current || processedAction.current === key) return;
+    busy.current = true;
+    try {
+      const resolution = resolveChoice(gameState, choice, Math.random, key);
+      if (!resolution) return;
+      processedAction.current = key;
+      const totalWeight = choice.outcomes.reduce((sum, outcome) => sum + Math.max(0, outcome.weight), 0);
+      const rareJackpot = resolution.actualChange > 0 && totalWeight > 0 && resolution.outcome.weight / totalWeight < .1;
+      const previousNetWorth = Math.max(1, getNetWorth(gameState));
+      const lostNinetyPercent = resolution.actualChange <= -(previousNetWorth * .9);
+      const lifetimeBankruptcies = globalStats.bankruptcies + (resolution.status === 'bankrupt' ? 1 : 0);
+      let state = applyAchievementRules(resolution.state, getNetWorth(resolution.state), resolution.passiveIncome, {
+        bankrupt: resolution.status === 'bankrupt',
+        rareJackpot,
+        lostNinetyPercent,
+        lifetimeBankruptcies,
+      });
+      const stats: GlobalStats = { ...globalStats, totalDaysPlayed: globalStats.totalDaysPlayed + 1, decisionsMade: globalStats.decisionsMade + 1, businessesPurchased: globalStats.businessesPurchased + (state.runStats.businessesPurchased - gameState.runStats.businessesPurchased), lifetimeEarnings: globalStats.lifetimeEarnings + Math.max(0, resolution.actualChange), largestGain: Math.max(globalStats.largestGain, resolution.actualChange), largestLoss: Math.min(globalStats.largestLoss, resolution.actualChange), highestNetWorth: Math.max(globalStats.highestNetWorth, getNetWorth(state)), bankruptcies: globalStats.bankruptcies + (resolution.status === 'bankrupt' ? 1 : 0), victories: globalStats.victories + (resolution.status === 'victory' ? 1 : 0), fastestBillion: resolution.status === 'victory' && (!globalStats.fastestBillion || state.day < globalStats.fastestBillion) ? state.day : globalStats.fastestBillion };
+      commit(state, stats);
+      return { outcome: resolution.outcome, status: resolution.status, actualChange: resolution.actualChange, passiveIncome: resolution.passiveIncome, riskPenalty: resolution.riskPenalty };
+    } finally { busy.current = false; }
   };
-
-  const startGame = () => {
-    const freshState = {
-      ...defaultGameState,
-      achievements: gameState?.achievements || [],
-    };
-    const newStats = { ...globalStats, gamesPlayed: globalStats.gamesPlayed + 1 };
-    setGameState(freshState);
-    setGlobalStats(newStats);
-    saveState(freshState, newStats);
-    router.replace('/game');
+  const upgradeBusiness = (id: string) => {
+    if (!gameState || busy.current) return { upgraded: false, cost: 0 };
+    busy.current = true; try { const result = upgradeHolding(gameState, id); if (result.upgraded) commit(applyAchievementRules(result.state, getNetWorth(result.state), getPassiveIncome(result.state), { lifetimeBankruptcies: globalStats.bankruptcies })); return { upgraded: result.upgraded, cost: result.cost }; } finally { busy.current = false; }
   };
-
-  const getNetWorth = (state: GameState) => {
-    const businessesValue = state.businesses.reduce((acc, id) => {
-      return acc + (BUSINESSES[id]?.dailyIncome * 100 || 0);
-    }, 0);
-    return state.cash + businessesValue - state.debt;
+  const applyBonusResult = (result: BonusResult, actionId?: string) => {
+    const key = actionId || `bonus:${result.id || result.text || result.cashChange || 0}:${gameState?.day}`;
+    if (!gameState || busy.current || processedAction.current === key || gameState.lastActionId === key) return false;
+    busy.current = true; try { const updated = applyBonus(gameState, result); const state = applyAchievementRules({ ...updated, lastActionId: key }, getNetWorth(updated), getPassiveIncome(updated), { lifetimeBankruptcies: globalStats.bankruptcies }); processedAction.current = key; commit(state); return true; } finally { busy.current = false; }
   };
-
-  const getPassiveIncome = (state: GameState) => {
-    return state.businesses.reduce((acc, id) => acc + (BUSINESSES[id]?.dailyIncome || 0), 0);
-  };
-
-  const unlockAchievement = (state: GameState, id: string): GameState => {
-    if (!state.achievements.includes(id)) {
-      return { ...state, achievements: [...state.achievements, id] };
-    }
-    return state;
-  };
-
-  const checkAchievements = (state: GameState, currentNetWorth: number, currentPassive: number, justBankrupted: boolean = false, secondChanceUsed: boolean = false): GameState => {
-    let s = { ...state };
-    if (currentNetWorth >= 100) s = unlockAchievement(s, 'first_100');
-    if (currentNetWorth >= 1000) s = unlockAchievement(s, 'first_1k');
-    if (currentNetWorth >= 10000) s = unlockAchievement(s, 'first_10k');
-    if (currentNetWorth >= 100000) s = unlockAchievement(s, 'six_figures');
-    if (currentNetWorth >= 1000000) s = unlockAchievement(s, 'millionaire');
-    if (currentNetWorth >= 10000000) s = unlockAchievement(s, 'ten_million');
-    if (currentNetWorth >= 100000000) s = unlockAchievement(s, 'hundred_million');
-    if (currentNetWorth >= 1000000000) s = unlockAchievement(s, 'billionaire');
-    
-    if (s.risk >= 100) s = unlockAchievement(s, 'risk_taker');
-    if (s.businesses.length >= 1) s = unlockAchievement(s, 'first_business');
-    if (s.businesses.length >= 5) s = unlockAchievement(s, 'own_5');
-    if (s.businesses.length >= 10) s = unlockAchievement(s, 'own_10');
-    if (currentPassive >= 10000) s = unlockAchievement(s, 'passive_income');
-    if (s.runStats.biggestLoss <= -1000000) s = unlockAchievement(s, 'high_roller');
-    if (s.day >= 365) s = unlockAchievement(s, 'survivor');
-    if (justBankrupted) s = unlockAchievement(s, 'bankrupt');
-    if (secondChanceUsed) s = unlockAchievement(s, 'comeback');
-
-    if (justBankrupted && globalStats.bankruptcies + 1 >= 5) s = unlockAchievement(s, 'stubborn');
-    
-    return s;
-  };
-
-  const makeChoice = (choice: Choice) => {
-    if (!gameState) return;
-
-    const totalWeight = choice.outcomes.reduce((acc, o) => acc + o.weight, 0);
-    let rand = Math.random() * totalWeight;
-    let selectedOutcome: Outcome = choice.outcomes[0];
-
-    for (const o of choice.outcomes) {
-      if (rand < o.weight) {
-        selectedOutcome = o;
-        break;
-      }
-      rand -= o.weight;
-    }
-
-    const isRare = (selectedOutcome.weight / totalWeight) <= 0.1;
-
-    let s = { ...gameState };
-    const nwBefore = getNetWorth(s);
-    
-    s.cash -= choice.cost;
-    let change = selectedOutcome.cashChange;
-    s.cash += change;
-    
-    if (change > s.runStats.biggestWin) s.runStats.biggestWin = change;
-    if (change < s.runStats.biggestLoss) s.runStats.biggestLoss = change;
-    
-    s.risk = clamp(s.risk + selectedOutcome.riskChange, 0, 100);
-    
-    let stats = { ...globalStats };
-
-    if (selectedOutcome.businessUnlocked && !s.businesses.includes(selectedOutcome.businessUnlocked)) {
-      s.businesses = [...s.businesses, selectedOutcome.businessUnlocked];
-      s.runStats.businessesPurchased += 1;
-      stats.businessesPurchased += 1;
-    }
-    
-    const passive = getPassiveIncome(s);
-    s.cash += passive;
-    
-    s.day += 1;
-    
-    const nwAfter = getNetWorth(s);
-    if (nwAfter > s.runStats.peakNetWorth) {
-      s.runStats.peakNetWorth = nwAfter;
-    }
-
-    s.runStats.decisionsMade += 1;
-    stats.decisionsMade += 1;
-    if (change > 0) stats.lifetimeEarnings += change;
-    if (change > stats.largestGain) stats.largestGain = change;
-    if (change < stats.largestLoss) stats.largestLoss = change;
-
-    if (s.risk >= 80 && Math.random() < 0.1) {
-      const penalty = Math.floor(s.cash * 0.5);
-      s.cash -= penalty;
-      if (-penalty < s.runStats.biggestLoss) s.runStats.biggestLoss = -penalty;
-    }
-
-    stats.totalDaysPlayed += 1;
-    if (nwAfter > stats.highestNetWorth) {
-      stats.highestNetWorth = nwAfter;
-    }
-
-    if (change < 0 && Math.abs(change) >= nwBefore * 0.9) {
-      s = unlockAchievement(s, 'lose_90');
-    }
-    if (isRare && change > 0) {
-      s = unlockAchievement(s, 'rare_jackpot');
-    }
-
-    if (nwAfter >= 1000000000) {
-      if (!stats.fastestBillion || s.day < stats.fastestBillion) {
-         stats.fastestBillion = s.day;
-      }
-    }
-
-    s = checkAchievements(s, nwAfter, passive);
-    
-    let status: GameStatus = 'ongoing';
-    if (s.cash < 0) {
-      status = 'bankrupt';
-      stats.bankruptcies += 1;
-      s = checkAchievements(s, nwAfter, passive, true, false);
-    } else if (nwAfter >= 1000000000) {
-      // Trigger victory once hitting 1B threshold
-      status = 'victory';
-      stats.victories += 1;
-    }
-
-    setGameState(s);
-    setGlobalStats(stats);
-    saveState(s, stats);
-
-    return { outcome: selectedOutcome, status, actualChange: change };
-  };
-
-  const useSecondChance = () => {
-    if (!gameState) return;
-    let s = { ...gameState };
-    s.cash = Math.max(100, s.runStats.peakNetWorth * 0.1);
-    s.risk = 0;
-    
-    const nw = getNetWorth(s);
-    s = checkAchievements(s, nw, getPassiveIncome(s), false, true);
-
-    setGameState(s);
-    saveState(s, globalStats);
-    router.replace('/game');
-  };
-
-  const endGame = (victory: boolean) => {
-    if (!gameState) return;
-    AsyncStorage.removeItem(KEYS.GAME_STATE);
-    setGameState({ ...defaultGameState, achievements: gameState.achievements });
-    router.replace('/');
-  };
-
-  const resetProgress = () => {
-    setGameState(null);
-    setGlobalStats(defaultGlobalStats);
-    AsyncStorage.clear();
-    router.replace('/');
-  };
-
+  const useSecondChance = () => { if (!gameState) return; const revived = { ...gameState, cash: Math.max(100, gameState.runStats.peakNetWorth * .1), risk: 0 }; const state = applyAchievementRules(revived, getNetWorth(revived), getPassiveIncome(revived), { comeback: true, lifetimeBankruptcies: globalStats.bankruptcies }); commit(state); router.replace('/game'); };
+  const endGame = () => { if (!gameState) return; void persistQueue.current.finally(() => AsyncStorage.removeItem(KEYS.GAME_STATE)); setGameState({ ...defaultEngineState(), achievements: gameState.achievements }); router.replace('/'); };
+  const resetProgress = () => { setGameState(null); setGlobalStats(defaultGlobalStats); void persistQueue.current.finally(() => AsyncStorage.multiRemove([KEYS.GAME_STATE, KEYS.GLOBAL_STATS])); router.replace('/'); };
+  const applyTemporaryWorldEvent = (event: TemporaryWorldEvent) => { if (gameState) commit(applyWorldEvent(gameState, event)); };
+  const dismissMilestone = () => { if (gameState) commit({ ...gameState, milestoneQueue: gameState.milestoneQueue.slice(1) }); };
   if (!loaded) return null;
-
-  return (
-    <GameContext.Provider value={{
-      gameState,
-      globalStats,
-      netWorth: gameState ? getNetWorth(gameState) : 0,
-      passiveIncome: gameState ? getPassiveIncome(gameState) : 0,
-      startGame,
-      makeChoice,
-      useSecondChance,
-      endGame,
-      resetProgress,
-    }}>
-      {children}
-    </GameContext.Provider>
-  );
+  return <GameContext.Provider value={{ gameState, globalStats, netWorth: gameState ? getNetWorth(gameState) : 0, passiveIncome: gameState ? getPassiveIncome(gameState) : 0, startGame, makeChoice, useSecondChance, endGame, resetProgress, upgradeBusiness, applyBonusResult, applySpecialResult: applyBonusResult, applyTemporaryWorldEvent, dismissMilestone }}>{children}</GameContext.Provider>;
 };
-
-export const useGame = () => {
-  const ctx = useContext(GameContext);
-  if (!ctx) throw new Error('useGame must be used within GameProvider');
-  return ctx;
-};
+export const useGame = () => { const context = useContext(GameContext); if (!context) throw new Error('useGame must be used within GameProvider'); return context; };
