@@ -13,7 +13,11 @@ permissions:
 
 concurrency:
   group: android-release-gate-${{ github.ref }}
-  cancel-in-progress: true
+  # This job is long-running (APK build + emulator boot). Queue concurrent
+  # triggers for the same ref instead of cancelling an in-progress run, so a
+  # manual re-run from the Actions UI can't kill a run that's already making
+  # progress.
+  cancel-in-progress: false
 
 jobs:
   android-release-gate:
