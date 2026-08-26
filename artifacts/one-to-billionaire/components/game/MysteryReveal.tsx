@@ -6,6 +6,7 @@ import { BaseGameProps, Rarity } from '../../types/gameplay';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useSettings } from '../../context/SettingsContext';
+import { MYSTERY_ITEMS, mysteryResult } from '../../game-engine/miniGameLogic';
 
 const RARITY_COLORS: Record<Rarity, string> = {
   common: colors.muted,
@@ -14,15 +15,6 @@ const RARITY_COLORS: Record<Rarity, string> = {
   epic: '#8B5CF6', // purple
   legendary: '#F59E0B', // gold
   mythic: '#EF4444', // red
-};
-
-const RARITY_ITEMS: Record<Rarity, { name: string; score: number; multiplier: number }> = {
-  common: { name: 'Antique Watch', score: 120, multiplier: 1 },
-  uncommon: { name: 'Signed Collectible', score: 300, multiplier: 1 },
-  rare: { name: 'Rare Trading Card', score: 750, multiplier: 1.1 },
-  epic: { name: 'Estate Ring', score: 1_800, multiplier: 1.25 },
-  legendary: { name: 'Small Gold Bar', score: 4_000, multiplier: 1.5 },
-  mythic: { name: 'Mystery USB Wallet', score: 10_000, multiplier: 2 },
 };
 
 export const MysteryReveal: React.FC<BaseGameProps & { itemRarity?: Rarity }> = ({ 
@@ -79,13 +71,7 @@ export const MysteryReveal: React.FC<BaseGameProps & { itemRarity?: Rarity }> = 
     completionTimer.current = setTimeout(() => {
       if (completedRef.current) return;
       completedRef.current = true;
-      const item = RARITY_ITEMS[itemRarity];
-      onComplete({
-        score: item.score,
-        multiplier: item.multiplier,
-        bonus: Math.round(item.score * .25),
-        outcome: 'success'
-      });
+      onComplete(mysteryResult(itemRarity));
     }, 2000);
   };
 
@@ -111,7 +97,7 @@ export const MysteryReveal: React.FC<BaseGameProps & { itemRarity?: Rarity }> = 
       <Text style={styles.title}>
         {step === 'revealed' ? itemRarity.toUpperCase() + ' ITEM!' : 'Mystery Box'}
       </Text>
-      {step === 'revealed' && <Text style={styles.itemName}>{RARITY_ITEMS[itemRarity].name}</Text>}
+      {step === 'revealed' && <Text style={styles.itemName}>{MYSTERY_ITEMS[itemRarity].name}</Text>}
 
       <TouchableWithoutFeedback onPress={handleTap}>
         <Animated.View style={[styles.boxContainer, boxStyle]}>

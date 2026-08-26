@@ -5,6 +5,7 @@ import { BaseGameProps } from '../../types/gameplay';
 import { useSettings } from '../../context/SettingsContext';
 import * as Haptics from 'expo-haptics';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing, withSpring } from 'react-native-reanimated';
+import { passiveBurstResult } from '../../game-engine/miniGameLogic';
 
 export const PassiveIncomeBurst: React.FC<BaseGameProps> = ({ onComplete, durationMs = 5000, testID }) => {
   const { settings } = useSettings();
@@ -33,12 +34,7 @@ export const PassiveIncomeBurst: React.FC<BaseGameProps> = ({ onComplete, durati
     const timeout = setTimeout(() => {
       if (completedRef.current) return;
       completedRef.current = true;
-      onComplete({
-        score: tapsRef.current * 10,
-        multiplier: 1,
-        bonus: tapsRef.current * 10,
-        outcome: tapsRef.current > 20 ? 'success' : 'neutral'
-      });
+      onComplete(passiveBurstResult(tapsRef.current));
     }, durationMs);
     
     return () => {

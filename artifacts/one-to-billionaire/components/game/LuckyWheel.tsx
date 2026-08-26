@@ -5,6 +5,7 @@ import { colors } from '../../constants/colors';
 import { BaseGameProps } from '../../types/gameplay';
 import { Button } from '../Button';
 import Svg, { Circle, Path, G, Text as SvgText } from 'react-native-svg';
+import { wheelIndex, wheelResult } from '../../game-engine/miniGameLogic';
 
 interface WheelOption {
   label: string;
@@ -22,7 +23,7 @@ export const LuckyWheel: React.FC<BaseGameProps & { options: WheelOption[] }> = 
     setSpinning(true);
 
     const segmentAngle = 360 / options.length;
-    const targetIndex = Math.floor(Math.random() * options.length);
+    const targetIndex = wheelIndex(options.length);
     const targetAngle = 360 - (targetIndex * segmentAngle) - (segmentAngle / 2);
     
     // Spin 5 times + target
@@ -42,12 +43,7 @@ export const LuckyWheel: React.FC<BaseGameProps & { options: WheelOption[] }> = 
     finishTimer.current = setTimeout(() => {
       if (completedRef.current) return;
       completedRef.current = true;
-      onComplete({
-        score: selected.value,
-        multiplier: 1,
-        bonus: 0,
-        outcome: selected.value > 0 ? 'success' : 'failure'
-      });
+      onComplete(wheelResult(selected.value));
     }, 1000);
   };
 

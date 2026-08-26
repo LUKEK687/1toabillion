@@ -5,13 +5,17 @@ import { colors } from '../../constants/colors';
 import { BaseGameProps } from '../../types/gameplay';
 import { Button } from '../Button';
 import { Ionicons } from '@expo/vector-icons';
+import { createCompletionGate, safeCrackHit } from '../../game-engine/miniGameLogic';
 
 export const SafeCrack: React.FC<BaseGameProps> = ({ onComplete, difficulty = 0.5, testID }) => {
   const [level, setLevel] = useState(0); // 0, 1, 2
+  const levelRef = useRef(0);
   const [failed, setFailed] = useState(false);
+  const tapLockedRef = useRef(false);
+  const completionGate = useRef(createCompletionGate()).current;
+  const completionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rotation = useSharedValue(0);
   const targets = useRef([Math.random() * 360, Math.random() * 360, Math.random() * 360]).current;
-  const tolerance = Math.max(10, 30 - (difficulty * 20)); // degrees of tolerance
 
   const startAnimation = useCallback(() => {
     const speed = 2000 - (difficulty * 1000) - (level * 200);
@@ -28,35 +32,43 @@ export const SafeCrack: React.FC<BaseGameProps> = ({ onComplete, difficulty = 0.
     return () => cancelAnimation(rotation);
   }, [level, difficulty, startAnimation, rotation]);
 
+  useEffect(() => () => {
+    if (completionTimer.current) clearTimeout(completionTimer.current);
+  }, []);
+
   const handleTap = () => {
-    if (failed || level >= 3) return;
+    if (tapLockedRef.current || failed || level >= 3) return;
+    tapLockedRef.current = true;
     
     // Convert current value to 0-360
     const currentRot = rotation.value % 360;
-    const target = targets[level];
+    const currentLevel = levelRef.current;
+    const target = targets[currentLevel];
     
-    // Check distance accounting for wrap around
-    let dist = Math.abs(currentRot - target);
-    if (dist > 180) dist = 360 - dist;
-    
-    if (dist <= tolerance) {
-      if (level === 2) {
+    if (safeCrackHit(currentRot, target, difficulty)) {
+      if (currentLevel === 2) {
         cancelAnimation(rotation);
+        levelRef.current = 3;
         setLevel(3);
-        setTimeout(() => {
-          onComplete({ score: 1000, multiplier: 2, bonus: 500, outcome: 'success' });
+        completionTimer.current = setTimeout(() => {
+          completionGate.tryComplete(() => onComplete({ score: 1000, multiplier: 2, bonus: 500, outcome: 'success' }));
         }, 1000);
       } else {
-        setLevel(l => l + 1);
+        levelRef.current = currentLevel + 1;
+        setLevel(levelRef.current);
       }
     } else {
       setFailed(true);
       cancelAnimation(rotation);
-      setTimeout(() => {
-        onComplete({ score: 0, multiplier: 1, bonus: 0, outcome: 'failure' });
+      completionTimer.current = setTimeout(() => {
+        completionGate.tryComplete(() => onComplete({ score: 0, multiplier: 1, bonus: 0, outcome: 'failure' }));
       }, 1500);
     }
   };
+
+  useEffect(() => {
+    tapLockedRef.current = false;
+  }, [level]);
 
   const dialStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${rotation.value}deg` }]

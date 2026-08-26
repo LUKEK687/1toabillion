@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "noEmit": false,
+    "outDir": ".validation-build",
+    "rootDir": "."
+  },
+  "include": [
+    "game-engine/**/*.ts",
+    "!game-engine/componentValidation.tsx",
+    "constants/**/*.ts",
+    "lib/storage.ts",
+    "lib/utils.ts",
+    "types/gameplay.ts"
+  ]
+}

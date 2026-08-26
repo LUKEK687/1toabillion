@@ -4,10 +4,9 @@ import Animated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS } from 
 import { colors } from '../../constants/colors';
 import { BaseGameProps } from '../../types/gameplay';
 import { Button } from '../Button';
+import { swipeDirection } from '../../game-engine/miniGameLogic';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;
-
 interface SwipeProps extends BaseGameProps {
   title: string;
   text: string;
@@ -59,9 +58,10 @@ export const SwipeDecisionCard: React.FC<SwipeProps> = ({
       rotate.value = gs.dx / 20; // max ~15 degrees
     },
     onPanResponderRelease: (_, gs) => {
-      if (gs.dx > SWIPE_THRESHOLD) {
+      const direction = swipeDirection(gs.dx, SCREEN_WIDTH);
+      if (direction === 'right') {
         runOnJS(handleDecision)('right');
-      } else if (gs.dx < -SWIPE_THRESHOLD) {
+      } else if (direction === 'left') {
         runOnJS(handleDecision)('left');
       } else {
         translateX.value = withSpring(0);

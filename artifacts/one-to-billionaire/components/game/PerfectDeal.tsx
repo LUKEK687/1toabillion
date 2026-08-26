@@ -1,12 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, Text } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing, cancelAnimation } from 'react-native-reanimated';
 import { colors } from '../../constants/colors';
 import { BaseGameProps } from '../../types/gameplay';
 import { Button } from '../Button';
+import { createCompletionGate, perfectDealResult } from '../../game-engine/miniGameLogic';
 
 export const PerfectDeal: React.FC<BaseGameProps> = ({ onComplete, difficulty = 0.5, testID }) => {
   const [stopped, setStopped] = useState(false);
+  const stopLockedRef = useRef(false);
+  const completionGate = useRef(createCompletionGate()).current;
+  const completionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const position = useSharedValue(0);
   const targetWidth = Math.max(0.05, 0.2 - (difficulty * 0.15)); // 5% to 20% width
   const targetStartPos = 0.5 - targetWidth / 2;
@@ -18,43 +22,22 @@ export const PerfectDeal: React.FC<BaseGameProps> = ({ onComplete, difficulty = 
       -1,
       true // reverse
     );
-    return () => cancelAnimation(position);
+    return () => {
+      cancelAnimation(position);
+      if (completionTimer.current) clearTimeout(completionTimer.current);
+    };
   }, [difficulty, position]);
 
   const handleStop = () => {
-    if (stopped) return;
+    if (stopLockedRef.current) return;
+    stopLockedRef.current = true;
     setStopped(true);
     cancelAnimation(position);
     
-    const pos = position.value;
-    const isHit = pos >= targetStartPos && pos <= targetStartPos + targetWidth;
-    const distance = Math.abs(pos - 0.5); // 0 is perfect center
-    
-    let outcome: 'perfect' | 'success' | 'failure' = 'failure';
-    let multiplier = 1;
-    let score = 0;
-    
-    if (distance < targetWidth / 4) {
-      outcome = 'perfect';
-      multiplier = 2;
-      score = 500;
-    } else if (isHit) {
-      outcome = 'success';
-      multiplier = 1.2;
-      score = 200;
-    } else {
-      outcome = 'failure';
-      multiplier = 0.5;
-      score = 0;
-    }
+    const result = perfectDealResult(position.value, difficulty);
 
-    setTimeout(() => {
-      onComplete({
-        score,
-        multiplier,
-        bonus: 0,
-        outcome
-      });
+    completionTimer.current = setTimeout(() => {
+      completionGate.tryComplete(() => onComplete(result));
     }, 1500);
   };
 

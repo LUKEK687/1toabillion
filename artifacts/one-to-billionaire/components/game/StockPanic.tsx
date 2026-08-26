@@ -4,6 +4,7 @@ import Svg, { Path } from 'react-native-svg';
 import { colors } from '../../constants/colors';
 import { BaseGameProps } from '../../types/gameplay';
 import { Button } from '../Button';
+import { createCompletionGate, stockPanicResult } from '../../game-engine/miniGameLogic';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CHART_WIDTH = SCREEN_WIDTH - 48;
@@ -16,6 +17,7 @@ export const StockPanic: React.FC<BaseGameProps> = ({ onComplete, testID }) => {
   
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dataTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const completionGate = useRef(createCompletionGate()).current;
 
   // Store dataPoints reference to avoid stale closures in handleEnd if called by timeout
   const dataPointsRef = useRef(dataPoints);
@@ -60,23 +62,7 @@ export const StockPanic: React.FC<BaseGameProps> = ({ onComplete, testID }) => {
     const points = dataPointsRef.current;
     const startVal = points[0] || 100;
     const endVal = points[points.length - 1] || 100;
-    const diff = endVal - startVal;
-    
-    let outcome: 'success' | 'failure' | 'neutral' = 'neutral';
-    let score = 0;
-
-    if (choice === 'buy') {
-      outcome = diff > 0 ? 'success' : 'failure';
-      score = diff > 0 ? 300 : -200;
-    } else if (choice === 'sell') {
-      outcome = diff < 0 ? 'success' : 'failure';
-      score = diff < 0 ? 300 : -200;
-    } else {
-      score = 50;
-      outcome = 'neutral';
-    }
-
-    onComplete({ score, multiplier: 1, bonus: 0, outcome });
+    completionGate.tryComplete(() => onComplete(stockPanicResult(choice, startVal, endVal)));
   };
 
   const handleChoice = (choice: 'buy' | 'sell' | 'hold') => {

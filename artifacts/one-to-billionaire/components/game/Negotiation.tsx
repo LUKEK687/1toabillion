@@ -1,8 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, View, Text, PanResponder } from 'react-native';
 import { colors } from '../../constants/colors';
 import { BaseGameProps } from '../../types/gameplay';
 import { Button } from '../Button';
+import { createCompletionGate, negotiationOutcome, negotiationResult } from '../../game-engine/miniGameLogic';
 
 export const Negotiation: React.FC<BaseGameProps & { startingPrice: number; targetPrice: number }> = ({ 
   onComplete, 
@@ -13,26 +14,34 @@ export const Negotiation: React.FC<BaseGameProps & { startingPrice: number; targ
   const [offer, setOffer] = useState(startingPrice * 0.5);
   const [status, setStatus] = useState<'idle' | 'thinking' | 'accepted' | 'counter' | 'rejected'>('idle');
   const [counterOffer, setCounterOffer] = useState<number | null>(null);
+  const completionGate = useRef(createCompletionGate()).current;
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const schedule = (callback: () => void, delay: number) => {
+    timers.current.push(setTimeout(callback, delay));
+  };
+
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
   
   const submitOffer = () => {
     setStatus('thinking');
     
-    setTimeout(() => {
-      if (offer >= targetPrice) {
+    schedule(() => {
+      const outcome = negotiationOutcome(offer, targetPrice);
+      if (outcome === 'accepted') {
         setStatus('accepted');
-        setTimeout(() => onComplete({ score: -offer, multiplier: 1, bonus: 0, outcome: 'success' }), 1500);
-      } else if (offer >= targetPrice * 0.8) {
+        schedule(() => completionGate.tryComplete(() => onComplete(negotiationResult('accepted', offer))), 1500);
+      } else if (outcome === 'counter') {
         setStatus('counter');
         setCounterOffer(targetPrice + (startingPrice - targetPrice) * 0.2); // slight drop from starting
       } else {
         setStatus('rejected');
-        setTimeout(() => onComplete({ score: 0, multiplier: 1, bonus: 0, outcome: 'failure' }), 1500);
+        schedule(() => completionGate.tryComplete(() => onComplete(negotiationResult('rejected', offer))), 1500);
       }
     }, 1500);
   };
 
   const walkAway = () => {
-    onComplete({ score: 0, multiplier: 1, bonus: 0, outcome: 'walked' });
+    completionGate.tryComplete(() => onComplete({ score: 0, multiplier: 1, bonus: 0, outcome: 'walked' }));
   };
 
   const panResponder = useRef(PanResponder.create({

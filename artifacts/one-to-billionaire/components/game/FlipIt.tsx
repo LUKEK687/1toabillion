@@ -4,14 +4,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-na
 import { colors } from '../../constants/colors';
 import { BaseGameProps } from '../../types/gameplay';
 import { Ionicons } from '@expo/vector-icons';
-
-const PRODUCTS = [
-  { id: 1, name: "Vintage Watch", price: 500, realValue: 800 },
-  { id: 2, name: "Fake Art", price: 1000, realValue: 100 },
-  { id: 3, name: "Rare Coin", price: 200, realValue: 600 },
-  { id: 4, name: "Broken Laptop", price: 150, realValue: 50 },
-  { id: 5, name: "Gold Ring", price: 300, realValue: 400 },
-];
+import { FLIP_PRODUCTS, flipResult, flipRoundScore } from '../../game-engine/miniGameLogic';
 
 export const FlipIt: React.FC<BaseGameProps & { rounds?: number }> = ({ onComplete, rounds = 3, testID }) => {
   const [currentRound, setCurrentRound] = useState(0);
@@ -25,26 +18,20 @@ export const FlipIt: React.FC<BaseGameProps & { rounds?: number }> = ({ onComple
   const translateY = useSharedValue(0);
   const opacity = useSharedValue(1);
 
-  const product = PRODUCTS[currentRound % PRODUCTS.length];
+  const product = FLIP_PRODUCTS[currentRound % FLIP_PRODUCTS.length];
 
   const handleSwipe = (direction: 'up' | 'down') => {
     if (completedRef.current) return;
     const round = roundRef.current;
-    const currentProduct = PRODUCTS[round % PRODUCTS.length];
     const isBuy = direction === 'up'; // swipe up to buy
-    const roundScore = isBuy ? currentProduct.realValue - currentProduct.price : 0;
+    const roundScore = flipRoundScore(round, isBuy);
     const nextScore = scoreRef.current + roundScore;
     scoreRef.current = nextScore;
     setScore(nextScore);
 
     if (round + 1 >= rounds) {
       completedRef.current = true;
-      onComplete({
-        score: nextScore,
-        multiplier: 1,
-        bonus: 0,
-        outcome: nextScore > 0 ? 'success' : 'failure'
-      });
+      onComplete(flipResult(nextScore));
     } else {
       roundRef.current = round + 1;
       setCurrentRound(roundRef.current);

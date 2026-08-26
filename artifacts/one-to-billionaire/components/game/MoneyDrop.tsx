@@ -3,6 +3,7 @@ import { StyleSheet, View, Text, PanResponder, Dimensions } from 'react-native';
 import { colors } from '../../constants/colors';
 import { BaseGameProps } from '../../types/gameplay';
 import { Ionicons } from '@expo/vector-icons';
+import { moneyDropResult } from '../../game-engine/miniGameLogic';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BAG_WIDTH = 80;
@@ -105,12 +106,7 @@ export const MoneyDrop: React.FC<BaseGameProps> = ({ onComplete, durationMs = 50
       if (timerRef.current) clearInterval(timerRef.current);
       if (loopRef.current) clearInterval(loopRef.current);
       
-      onComplete({
-        score: scoreRef.current,
-        multiplier: 1,
-        bonus: 0,
-        outcome: scoreRef.current > 0 ? 'success' : 'failure'
-      });
+      onComplete(moneyDropResult(scoreRef.current));
     }, durationMs);
 
     return () => {
