@@ -95,6 +95,7 @@ jobs:
         with:
           api-level: 35
           arch: x86_64
+          target: google_apis
           profile: pixel_6
           disable-animations: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
@@ -119,8 +120,8 @@ jobs:
         if: always()
         run: |
           mkdir -p "$MAESTRO_RESULTS_DIR"
-          adb logcat -d > "$MAESTRO_RESULTS_DIR/logcat.txt" 2>&1 || true
-          adb shell dumpsys activity activities > "$MAESTRO_RESULTS_DIR/activities.txt" 2>&1 || true
+          timeout 30 adb logcat -d > "$MAESTRO_RESULTS_DIR/logcat.txt" 2>&1 || true
+          timeout 30 adb shell dumpsys activity activities > "$MAESTRO_RESULTS_DIR/activities.txt" 2>&1 || true
 
       - name: Upload Android gate diagnostics
         if: always()
