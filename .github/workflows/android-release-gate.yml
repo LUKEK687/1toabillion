@@ -62,7 +62,19 @@ jobs:
 
       - name: Build release-candidate APK
         working-directory: ${{ env.APP_DIR }}/android
-        run: ./gradlew assembleRelease --no-daemon --stacktrace
+        run: |
+          set +e
+          ./gradlew assembleRelease --no-daemon --stacktrace > /tmp/gradle-build.log 2>&1
+          status=$?
+          if [ $status -ne 0 ]; then
+            echo "::group::Gradle build log (last 200 lines)"
+            tail -n 200 /tmp/gradle-build.log
+            echo "::endgroup::"
+            tail -n 40 /tmp/gradle-build.log | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+          fi
+          exit $status
 
       - name: Verify release-candidate APK
         run: test -s "$APK_PATH"
