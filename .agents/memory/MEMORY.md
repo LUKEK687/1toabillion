@@ -1,0 +1,1 @@
+- [Android release publication](android-release-publication.md) — publish only the artifact tested for the exact immutable version-tag commit.

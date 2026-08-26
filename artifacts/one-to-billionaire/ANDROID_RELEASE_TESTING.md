@@ -11,9 +11,27 @@ The workflow is intentionally ordered so that a release cannot pass unless it:
 3. boots an Android emulator and installs that exact APK;
 4. runs the native Maestro smoke flow against the installed app.
 
-Create the release tag only from a commit whose Android release gate is
-required by the repository's release rules. A failure in either test stage
-fails the workflow and therefore blocks the release.
+The workflow is the publication boundary. For a `v*` tag, the
+`publish-android-release` job depends on `android-release-gate`, downloads the
+APK artifact named for the same commit, and publishes that tested APK to the
+GitHub release. A failure in either test stage prevents the publishing job from
+starting. Immediately before publication, the job also resolves the live tag
+through the GitHub API and refuses to publish if it no longer targets the tested
+commit.
+
+The publishing job is the only job with `contents: write`, and it is attached
+to the protected `android-production` GitHub environment. Configure that
+environment so release credentials and approvals are unavailable to every
+other job. Do not store publishing credentials as repository-level secrets.
+
+Repository rules must apply the required check
+`Android release gate / Deterministic suite and native gesture smoke` to
+`release/**`. Version tags are protected by the same workflow's job dependency:
+the tag triggers the gate, but no GitHub release is created unless it succeeds.
+Restrict creation and update of `v*` tags to release maintainers so an
+alternative publishing path cannot be introduced from an unchecked ref. Remove
+direct GitHub release creation rights from those maintainers; publication must
+use the protected `android-production` environment's approved workflow.
 
 The fast deterministic suite remains the first release check:
 
@@ -54,6 +72,16 @@ their minimum native-runtime timing. Any premature completion leaves a visible
 
 The CI workflow preserves the Maestro JUnit result, Maestro console output,
 Maestro debug files, Android logcat, and activity state for 14 days even when
-the gate fails. On success it also publishes the tested APK as a workflow
-artifact. The device gate complements, rather than replaces, `test:release`,
-which should continue to run on every change.
+the gate fails. On success it also stores the tested APK as a workflow artifact;
+for a `v*` tag, the downstream protected job attaches that exact APK to the
+GitHub release.
+
+The repository policy regression check deliberately evaluates publication with
+a failed gate and confirms that it is blocked:
+
+```sh
+pnpm test:android-release-policy
+```
+
+The device gate complements, rather than replaces, `test:release`, which should
+continue to run on every change.

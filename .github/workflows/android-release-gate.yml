@@ -114,3 +114,51 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           path: ${{ env.APK_PATH }}
+
+  publish-android-release:
+    name: Publish gated Android release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - android-release-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: android-production
+    permissions:
+      contents: write
+
+    steps:
+      - name: Verify tag still targets tested commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag_object_type="$(gh api \
+            "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" \
+            --jq '.object.type')"
+          tag_object_sha="$(gh api \
+            "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" \
+            --jq '.object.sha')"
+
+          if [ "$tag_object_type" = "tag" ]; then
+            tag_object_sha="$(gh api \
+              "repos/$GITHUB_REPOSITORY/git/tags/$tag_object_sha" \
+              --jq '.object.sha')"
+          fi
+
+          test "$tag_object_sha" = "$GITHUB_SHA"
+
+      - name: Download tested release-candidate APK
+        uses: actions/download-artifact@v4
+        with:
+          name: android-release-candidate-${{ github.sha }}
+          path: release
+
+      - name: Publish tested APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -s release/app-release.apk
+          gh release create "$GITHUB_REF_NAME" \
+            release/app-release.apk#one-to-billionaire-${GITHUB_REF_NAME}.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --generate-notes
