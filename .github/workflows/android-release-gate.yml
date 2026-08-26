@@ -18,7 +18,11 @@ concurrency:
 jobs:
   android-release-gate:
     name: Deterministic suite and native gesture smoke
-    runs-on: ubuntu-latest
+    # Pinned to ubuntu-22.04: reactivecircus/android-emulator-runner fails on
+    # ubuntu-24.04 (the current ubuntu-latest) because avdmanager can't create
+    # its AVD config directory there. See
+    # https://github.com/ReactiveCircus/android-emulator-runner/issues/400
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
 
     env:
