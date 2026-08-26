@@ -78,7 +78,11 @@ export const FlipIt: React.FC<BaseGameProps & { rounds?: number }> = ({ onComple
       <Text style={styles.headerText}>Round {currentRound + 1} of {rounds}</Text>
       <Text style={styles.subText}>Swipe UP to Buy, DOWN to Pass</Text>
 
-      <Animated.View {...panResponder.panHandlers} style={[styles.card, animatedStyle]}>
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={[styles.card, animatedStyle]}
+        testID={testID ? `${testID}-card` : undefined}
+      >
         <Ionicons name="pricetag-outline" size={64} color={colors.primary} />
         <Text style={styles.productName}>{product.name}</Text>
         <Text style={styles.productPrice}>Asking: ${product.price}</Text>

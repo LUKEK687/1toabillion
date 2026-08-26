@@ -99,7 +99,10 @@ export const MysteryReveal: React.FC<BaseGameProps & { itemRarity?: Rarity }> = 
       </Text>
       {step === 'revealed' && <Text style={styles.itemName}>{MYSTERY_ITEMS[itemRarity].name}</Text>}
 
-      <TouchableWithoutFeedback onPress={handleTap}>
+      <TouchableWithoutFeedback
+        onPress={handleTap}
+        testID={testID ? `${testID}-box` : undefined}
+      >
         <Animated.View style={[styles.boxContainer, boxStyle]}>
           {step === 'revealed' ? (
             <Ionicons name="diamond" size={80} color={RARITY_COLORS[itemRarity]} />

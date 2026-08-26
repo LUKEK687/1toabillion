@@ -79,7 +79,11 @@ export const SwipeDecisionCard: React.FC<SwipeProps> = ({
 
   return (
     <View style={styles.container} testID={testID}>
-      <Animated.View {...panResponder.panHandlers} style={[styles.card, animatedStyle]}>
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={[styles.card, animatedStyle]}
+        testID={testID ? `${testID}-card` : undefined}
+      >
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.text}>{text}</Text>
       </Animated.View>

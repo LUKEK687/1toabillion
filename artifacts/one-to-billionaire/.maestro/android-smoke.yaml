@@ -1,0 +1,59 @@
+appId: com.yourcompany.onetobillionaire
+---
+- launchApp:
+    clearState: true
+- openLink: one-to-billionaire:///android-smoke
+- extendedWaitUntil:
+    visible:
+      id: android-smoke-tap-box
+    timeout: 10000
+- tapOn:
+    id: android-smoke-tap-box
+- extendedWaitUntil:
+    visible: "RARE ITEM!"
+    timeout: 1000
+- extendedWaitUntil:
+    visible:
+      id: android-smoke-horizontal-card
+    timeout: 4000
+
+# 50 px is below swipeDirection's 25%-of-screen threshold.
+- swipe:
+    start: 55%, 50%
+    end: 67%, 50%
+    duration: 300
+- assertVisible:
+    id: android-smoke-horizontal-card
+
+# 60% of the screen width is safely above the threshold.
+- swipe:
+    start: 20%, 50%
+    end: 80%, 50%
+    duration: 300
+- extendedWaitUntil:
+    visible:
+      id: android-smoke-vertical-card
+    timeout: 2000
+
+# 60 px is below FlipIt's fixed 100 px vertical threshold.
+- swipe:
+    start: 50%, 58%
+    end: 50%, 50%
+    duration: 300
+- assertVisible:
+    id: android-smoke-vertical-card
+
+# A full upward swipe must complete only after the 300 ms animation delay.
+- swipe:
+    start: 50%, 75%
+    end: 50%, 25%
+    duration: 300
+- extendedWaitUntil:
+    visible:
+      id: android-smoke-timer
+    timeout: 2000
+- extendedWaitUntil:
+    visible:
+      id: android-smoke-complete
+    timeout: 3000
+- assertVisible: "ANDROID SMOKE PASSED"

@@ -62,6 +62,7 @@ export default function RootLayout() {
                   <Stack.Screen name="settings" options={{ title: 'Settings', headerBackTitle: 'Back' }} />
                   <Stack.Screen name="bankruptcy" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
                   <Stack.Screen name="victory" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
+                  <Stack.Screen name="android-smoke" options={{ headerShown: false }} />
                 </Stack>
               </GameProvider>
             </SettingsProvider>
