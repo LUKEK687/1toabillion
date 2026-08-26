@@ -104,32 +104,104 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Install emulator packages
+        run: |
+          set -o pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /tmp/sdkmanager-licenses.log 2>&1 || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" \
+            "emulator" \
+            "system-images;android-35;google_apis;x86_64" \
+            > /tmp/sdkmanager-install.log 2>&1
+          status=$?
+          if [ $status -ne 0 ]; then
+            tail -n 100 /tmp/sdkmanager-install.log | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+            exit $status
+          fi
+
       - name: Run native Android gesture gate
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          target: google_apis
-          profile: pixel_5
-          force-avd-creation: false
-          disable-animations: true
-          emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: |
-            set -o pipefail
-            mkdir -p "$MAESTRO_RESULTS_DIR"
-            adb install -r "$APK_PATH"
-            maestro test \
-              --format JUNIT \
-              --output "$MAESTRO_RESULTS_DIR/results.xml" \
-              "$APP_DIR/.maestro/android-smoke.yaml" \
-              2>&1 | tee "$MAESTRO_RESULTS_DIR/maestro.log"
-            status=$?
-            if [ $status -ne 0 ]; then
-              tail -n 60 "$MAESTRO_RESULTS_DIR/maestro.log" | while IFS= read -r line; do
+        timeout-minutes: 15
+        run: |
+          set +e
+          echo "no" | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd \
+            --force \
+            --name ci_test \
+            --package "system-images;android-35;google_apis;x86_64" \
+            --device "pixel_5" \
+            > /tmp/avdmanager.log 2>&1
+          status=$?
+          if [ $status -ne 0 ]; then
+            echo "::error::avdmanager create avd failed with exit code $status"
+            tail -n 100 /tmp/avdmanager.log | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+            exit $status
+          fi
+
+          nohup "$ANDROID_HOME/emulator/emulator" -avd ci_test \
+            -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect \
+            -camera-back none -camera-front none -accel on \
+            > /tmp/emulator.log 2>&1 &
+          EMULATOR_PID=$!
+
+          "$ANDROID_HOME/platform-tools/adb" wait-for-device
+          if [ $? -ne 0 ]; then
+            echo "::error::adb wait-for-device failed; emulator process may have exited early"
+            tail -n 150 /tmp/emulator.log | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+            exit 1
+          fi
+
+          boot_completed=""
+          for i in $(seq 1 90); do
+            if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
+              echo "::error::Emulator process exited before boot completed"
+              tail -n 150 /tmp/emulator.log | while IFS= read -r line; do
                 echo "::error::${line}"
               done
+              exit 1
             fi
-            exit $status
+            boot_completed=$("$ANDROID_HOME/platform-tools/adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')
+            if [ "$boot_completed" = "1" ]; then
+              break
+            fi
+            sleep 5
+          done
+
+          if [ "$boot_completed" != "1" ]; then
+            echo "::error::Emulator did not report sys.boot_completed=1 within timeout"
+            tail -n 150 /tmp/emulator.log | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+            kill "$EMULATOR_PID" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Emulator booted; disabling animations and unlocking screen"
+          "$ANDROID_HOME/platform-tools/adb" shell settings put global window_animation_scale 0
+          "$ANDROID_HOME/platform-tools/adb" shell settings put global transition_animation_scale 0
+          "$ANDROID_HOME/platform-tools/adb" shell settings put global animator_duration_scale 0
+          "$ANDROID_HOME/platform-tools/adb" shell input keyevent 82
+
+          mkdir -p "$MAESTRO_RESULTS_DIR"
+          "$ANDROID_HOME/platform-tools/adb" install -r "$APK_PATH"
+          maestro test \
+            --format JUNIT \
+            --output "$MAESTRO_RESULTS_DIR/results.xml" \
+            "$APP_DIR/.maestro/android-smoke.yaml" \
+            2>&1 | tee "$MAESTRO_RESULTS_DIR/maestro.log"
+          status=$?
+          if [ $status -ne 0 ]; then
+            tail -n 60 "$MAESTRO_RESULTS_DIR/maestro.log" | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+          fi
+
+          kill "$EMULATOR_PID" 2>/dev/null || true
+          exit $status
 
       - name: Capture Android diagnostics
         if: always()
@@ -137,6 +209,9 @@ jobs:
           mkdir -p "$MAESTRO_RESULTS_DIR"
           timeout 30 adb logcat -d > "$MAESTRO_RESULTS_DIR/logcat.txt" 2>&1 || true
           timeout 30 adb shell dumpsys activity activities > "$MAESTRO_RESULTS_DIR/activities.txt" 2>&1 || true
+          cp /tmp/emulator.log "$MAESTRO_RESULTS_DIR/emulator.log" 2>/dev/null || true
+          cp /tmp/avdmanager.log "$MAESTRO_RESULTS_DIR/avdmanager.log" 2>/dev/null || true
+          cp /tmp/sdkmanager-install.log "$MAESTRO_RESULTS_DIR/sdkmanager-install.log" 2>/dev/null || true
 
       - name: Upload Android gate diagnostics
         if: always()
