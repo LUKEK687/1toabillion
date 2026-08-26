@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:release": "pnpm run typecheck && rm -rf .validation-build && tsc -p tsconfig.validation.json && node .validation-build/game-engine/validation.js && rm -rf .validation-build && tsx game-engine/componentValidation.tsx",
     "test:android-smoke": "maestro test .maestro/android-smoke.yaml",
-    "test:prerelease": "pnpm run test:release && pnpm run test:android-smoke"
+    "test:prerelease": "pnpm run test:release && pnpm run test:android-smoke",
+    "build:android:release-candidate": "CI=1 expo prebuild --platform android --no-install && cd android && ./gradlew assembleRelease --no-daemon --stacktrace"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

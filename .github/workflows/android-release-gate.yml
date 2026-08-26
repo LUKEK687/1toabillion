@@ -1,0 +1,116 @@
+name: Android release gate
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+    branches:
+      - "release/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-release-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-release-gate:
+    name: Deterministic suite and native gesture smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      APP_DIR: artifacts/one-to-billionaire
+      APK_PATH: artifacts/one-to-billionaire/android/app/build/outputs/apk/release/app-release.apk
+      MAESTRO_RESULTS_DIR: artifacts/one-to-billionaire/test-results/maestro
+
+    steps:
+      - name: Check out release candidate
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run deterministic release suite
+        run: pnpm --filter @workspace/one-to-billionaire run test:release
+
+      - name: Generate Android release project
+        working-directory: ${{ env.APP_DIR }}
+        run: CI=1 pnpm exec expo prebuild --platform android --no-install
+
+      - name: Build release-candidate APK
+        working-directory: ${{ env.APP_DIR }}/android
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Verify release-candidate APK
+        run: test -s "$APK_PATH"
+
+      - name: Install Maestro
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Run native Android gesture gate
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -o pipefail
+            mkdir -p "$MAESTRO_RESULTS_DIR"
+            adb install -r "$APK_PATH"
+            maestro test \
+              --format JUNIT \
+              --output "$MAESTRO_RESULTS_DIR/results.xml" \
+              "$APP_DIR/.maestro/android-smoke.yaml" \
+              2>&1 | tee "$MAESTRO_RESULTS_DIR/maestro.log"
+
+      - name: Capture Android diagnostics
+        if: always()
+        run: |
+          mkdir -p "$MAESTRO_RESULTS_DIR"
+          adb logcat -d > "$MAESTRO_RESULTS_DIR/logcat.txt" 2>&1 || true
+          adb shell dumpsys activity activities > "$MAESTRO_RESULTS_DIR/activities.txt" 2>&1 || true
+
+      - name: Upload Android gate diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-gate-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            ${{ env.MAESTRO_RESULTS_DIR }}
+            ~/.maestro/tests
+
+      - name: Upload tested release-candidate APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-candidate-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ env.APK_PATH }}
