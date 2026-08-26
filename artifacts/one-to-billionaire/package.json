@@ -11,9 +11,7 @@
     "test:release": "pnpm run typecheck && rm -rf .validation-build && tsc -p tsconfig.validation.json && node .validation-build/game-engine/validation.js && rm -rf .validation-build && tsx game-engine/componentValidation.tsx",
     "test:android-smoke": "maestro test .maestro/android-smoke.yaml",
     "test:prerelease": "pnpm run test:release && pnpm run test:android-smoke",
-    "build:android:release-candidate": "CI=1 expo prebuild --platform android --no-install && cd android && ./gradlew assembleRelease --no-daemon --stacktrace",
-    "android": "expo run:android",
-    "ios": "expo run:ios"
+    "build:android:release-candidate": "CI=1 expo prebuild --platform android --no-install && cd android && ./gradlew assembleRelease --no-daemon --stacktrace"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -62,10 +60,5 @@
     "typescript": "~5.9.2",
     "zod": "catalog:",
     "zod-validation-error": "^3.4.0"
-  },
-  "dependencies": {
-    "expo": "~54.0.37",
-    "react": "19.1.0",
-    "react-native": "0.81.5"
   }
 }
