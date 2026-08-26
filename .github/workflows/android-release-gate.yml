@@ -110,9 +110,10 @@ jobs:
           api-level: 35
           arch: x86_64
           target: google_apis
-          profile: pixel_6
-          disable-animations: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          profile: pixel_5
+          force-avd-creation: false
+          disable-animations: true
+          emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
             set -o pipefail
             mkdir -p "$MAESTRO_RESULTS_DIR"
