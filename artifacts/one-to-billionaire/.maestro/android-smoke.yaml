@@ -2,6 +2,14 @@ appId: com.yourcompany.onetobillionaire
 ---
 - launchApp:
     clearState: true
+# Wait for the JS bundle to finish booting and the home screen to render
+# before firing the deep link. openLink delivers the link via onNewIntent
+# on the already-launching activity; if it races a cold JS boot, Expo
+# Router can miss the initial URL entirely and the app is left on the
+# home screen instead of navigating to /android-smoke.
+- extendedWaitUntil:
+    visible: "Start Your Journey"
+    timeout: 15000
 - openLink: one-to-billionaire:///android-smoke
 - extendedWaitUntil:
     visible:
