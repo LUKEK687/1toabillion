@@ -129,6 +129,7 @@ jobs:
         timeout-minutes: 15
         run: |
           set +e
+          set -o pipefail
           echo "no" | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd \
             --force \
             --name ci_test \
@@ -192,6 +193,15 @@ jobs:
 
           mkdir -p "$MAESTRO_RESULTS_DIR"
           "$ANDROID_HOME/platform-tools/adb" install -r "$APK_PATH"
+          install_status=$?
+          if [ $install_status -ne 0 ]; then
+            echo "::error::adb install failed with exit code $install_status"
+            kill "$EMULATOR_PID" 2>/dev/null || true
+            exit $install_status
+          fi
+
+          # pipefail (set above) makes $? reflect maestro's exit code, not
+          # tee's, so a failed/missing smoke test cannot masquerade as success.
           maestro test \
             --format JUNIT \
             --output "$MAESTRO_RESULTS_DIR/results.xml" \

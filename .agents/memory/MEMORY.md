@@ -1,1 +1,2 @@
 - [Android release publication](android-release-publication.md) — publish only the artifact tested for the exact immutable version-tag commit.
+- [GitHub rulesets — required checks](github-rulesets-required-checks.md) — checks must run on the exact protected ref; tag rulesets can deadlock without a bypass actor; ruleset API writes need a fine-grained Administration-write token.
